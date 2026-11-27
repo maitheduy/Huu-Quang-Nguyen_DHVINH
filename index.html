@@ -1,0 +1,398 @@
+<!doctype html>
+<html lang="vi">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Nguyễn Hữu Quang · Bản đồ công trình 3D</title>
+<style>
+:root{color-scheme:dark;--bg:#09111c;--panel:#111e2d;--border:#2a3b4d;--text:#e9f0f7;--muted:#a9bbcf;--mint:#75edcf;--gold:#ffcc8f}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 system-ui,sans-serif}main{max-width:1500px;margin:auto;padding:26px clamp(12px,4vw,50px)}h1{font-size:clamp(28px,5vw,49px);line-height:1.1;letter-spacing:-.045em;margin:0 0 8px}h2,h3{font-size:16px;margin:0 0 9px}p{margin:8px 0;color:var(--muted)}a{color:var(--mint)}.toolbar,.legend{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:16px 0 8px}.legend{padding:0 13px 10px;margin:0;font-size:13px;color:var(--muted)}.legend strong{color:var(--mint)}.legend em{color:var(--gold);font-style:normal}input,select,button{font:inherit;color:inherit;background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:8px 10px}input{min-width:210px;flex:1}button{cursor:pointer}button:hover,:focus-visible{outline:1px solid var(--mint);outline-offset:1px}button:disabled{opacity:.55;cursor:default}.primary{background:var(--mint);color:#102922;font-weight:750}.layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(265px,325px);gap:12px}.stage,aside{background:var(--panel);border:1px solid var(--border);border-radius:14px;overflow:hidden}canvas{width:100%;height:clamp(375px,65vh,770px);display:block;background:radial-gradient(ellipse at center,#1a3344,#090f1a 76%);cursor:grab;touch-action:none}canvas:active{cursor:grabbing}.hint{padding:8px 13px;font-size:13px}aside{padding:14px}#details{margin:0 0 16px;overflow-wrap:anywhere}#neighbors,#papers{display:grid;gap:5px;max-height:240px;overflow:auto}#neighbors{max-height:145px;margin-top:8px}#papers button,#neighbors button{text-align:left;font-size:13px}button[aria-pressed="true"]{border-color:var(--mint)}#message{min-height:22px}#count{color:var(--text)}details{margin-top:10px;color:var(--muted)}summary{cursor:pointer}@media(max-width:760px){.layout{grid-template-columns:1fr}}
+</style>
+</head>
+<body><main>
+<header><h1>Mạng công trình Nguyễn Hữu Quang</h1><p>Đại học Vinh · <a href="https://mathscinet.ams.org/mathscinet/author?authorId=354783" target="_blank" rel="noopener">MathSciNet Author ID 354783</a></p></header>
+<div class="toolbar">
+<input id="find" type="search" aria-label="Tìm trong bản đồ" placeholder="Tìm nhan đề, đồng tác giả, DOI…">
+<select id="scope" aria-label="Chủ đề"><option value="all">Mọi chủ đề</option><option>Tập mức · Tính lồi</option><option>Tối ưu bậc hai</option><option>Bất đẳng thức biến phân</option><option>Chủ đề khác</option></select>
+<select id="venue" aria-label="Nơi công bố"><option value="all">Mọi nguồn</option><option value="arxiv">Có trên arXiv</option><option value="journal">Có bản tạp chí</option><option value="both">Có cả hai</option></select>
+<select id="mode" aria-label="Loại liên kết"><option value="both">Trích dẫn + gần chủ đề</option><option value="official">Chỉ trích dẫn</option><option value="similar">Chỉ gần chủ đề</option><option value="coauthor">Cùng đồng tác giả</option></select>
+
+<button id="reset">Đặt lại góc nhìn</button><button id="export">Tải JSON</button>
+</div>
+<details><summary>Thêm công trình bằng đường dẫn</summary>
+<form id="add-paper" class="toolbar">
+<input id="paper-url" type="text" aria-label="URL hoặc DOI bài báo" placeholder="URL bài báo hoặc DOI" maxlength="1500" required>
+<input id="paper-title" type="text" aria-label="Nhan đề bài báo" placeholder="Nhan đề nếu không tra được DOI" maxlength="500">
+<button id="add-button" type="submit" class="primary">Thêm vào bản đồ</button>
+</form><p id="add-status" role="status"></p>
+<p>Dán link nhà xuất bản, link arXiv hoặc DOI. Nếu link không chứa DOI, nhập thêm nhan đề. Bài bổ sung được lưu trên trình duyệt này.</p></details>
+<p id="count" role="status"></p>
+<div class="layout">
+<section class="stage" aria-label="Bản đồ công trình">
+<canvas id="graph" aria-label="Đồ thị 3D tương tác. Có thể chọn công trình bằng danh sách bên cạnh."></canvas>
+<div class="hint">Kéo để xoay · Cuộn để phóng to · Bấm nút trên bản đồ để xem công trình</div>
+<div class="legend"><span><strong>━━</strong> Trích dẫn OpenAlex (có mũi tên)</span><span><em>┄┄</em> Gần chủ đề</span><span style="color:#c2b1ff">┄┄ Cùng đồng tác giả</span></div>
+</section>
+<aside><h2>Công trình đang chọn</h2><div id="details"></div><h3>Công trình trên bản đồ</h3><div id="papers"></div></aside>
+</div>
+<p id="message" role="status"></p>
+<details><summary>Dữ liệu, liên kết và tệp JSON</summary><p>Mỗi nút là một công trình. Mũi tên đi từ công trình trích dẫn sang công trình được trích dẫn theo OpenAlex. Đường đứt gợi ý bài gần nhau về nội dung. Chế độ đồng tác giả nối các bài có chung tác giả khác Nguyễn Hữu Quang.</p><p>Danh mục được lập từ bài đối chiếu tại AIMS, hồ sơ OpenAlex và các nguồn công bố công khai. MathSciNet Author ID dùng để đối chiếu danh tính. Độ phủ phụ thuộc vào dữ liệu các nguồn. JSON xuất danh sách đang lọc với hai trường title và doi. DOI dẫn đến bản tạp chí nếu có, hoặc bản arXiv nếu đó là DOI duy nhất. Trường doi có giá trị null khi chưa xác minh được DOI.</p><p><a href="https://viasm.edu.vn/hoat-dong-khoa-hoc/tin-tuc/chi-tiet/danh-sach-nha-toan-hoc-theo-van-q" target="_blank" rel="noopener">Đối chiếu MathSciNet ID tại VIASM</a> · <a href="https://doi.org/10.3934/jimo.2020169" target="_blank" rel="noopener">Bài đối chiếu tại AIMS</a> · <a href="https://openalex.org/A5088312249" target="_blank" rel="noopener">Hồ sơ OpenAlex</a></p></details>
+</main>
+<script type="application/json" id="snapshot">{"date": "27/11/2026", "records": [{"id": "8", "concept": "8", "title": "A QP1QC Approach for Deciding Whether or Not Two Quadratic Surfaces Intersect", "date": "2026", "authors": ["Huu-Quang Nguyen", "Ting-Tsen Lin", "Ruey-Lin Sheu", "Yong Xia"], "journal": "SIAM Journal on Optimization", "doi": ["10.1137/24m1674984"], "arxiv": [], "oa": ["W7134247818"], "refs": ["W1941836914", "W1996215314", "W1996754055", "W2000124444", "W2001902860", "W2014431362", "W2025246398", "W2036748716", "W2042255949", "W2051651621", "W2055898191", "W2058481358", "W2067785816", "W2067959964", "W2072899396", "W2091850740", "W2110540077", "W2117062628", "W2140214428", "W2143001632", "W2296319761", "W2508575958", "W2767717493", "W3103340002", "W4244513129", "W4255151293"], "sources": ["OpenAlex"], "description": "Given two [Formula: see text]-variate quadratic functions [Formula: see text] and [Formula: see text], we are interested in knowing whether or not the two hypersurfaces [Formula: see text] and [Formula: see text] intersect with each other. There are two ways of looking at this problem. In one respect, the famous Finsler–Calabi theorem (1936, 1964) asserts that if [Formula: see text] and [Formula: see text] are quadratic forms, [Formula: see text] and [Formula: see text] has no common solution other than the trivial one, [Formula: see text], if and only if there exists a positive definite matrix pencil [Formula: see text]. The result is in general not true for nonhomogeneous quadratic functions. On the other hand, Levin (c. late 1970s) tried to directly solve the intersection curve of [Formula: see text] and [Formula: see text] but it turned out to be way too ambitious. In this paper, we show that by incorporating the information about the unboundedness and the unattainability of several (at most 4) quadratic programming problems with one single quadratic constraint (QP1QC), the answer as to whether or not [Formula: see text] and [Formula: see text] intersect can be successfully determined.", "tags": [], "topic": "Tối ưu bậc hai", "type": "journal"}, {"id": "7", "concept": "7", "title": "Last two pieces of the puzzle for unsolvability of a system of two quadratic (in)equalities", "date": "2026", "authors": ["Min-Chi Wang", "Ruey-Lin Sheu", "Huu-Quang Nguyen"], "journal": "", "doi": ["10.48550/arxiv.2608.30571"], "arxiv": ["2608.30571"], "oa": ["W7204862048"], "refs": ["W1790240331", "W2005037112", "W2010364290", "W2014431362", "W2022070682", "W2036748716", "W2067959964", "W2077205953", "W2090180723", "W2091850740", "W2113432563", "W2128916604", "W2296319761", "W2508575958", "W2895282442", "W3034208633", "W3103340002", "W3216483149", "W3217321189", "W4235730211", "W4388616112", "W7134247818"], "sources": ["OpenAlex"], "description": "Given two quadratic functions \\( f(x) = x^T Ax + 2a^T x + a_0 \\) and \\( g(x) = x^T Bx + 2b^T x + b_0 ,\\) each associated with either the strict inequality ($\u003c0$); non-strict inequality ($\\leq 0$); or the equality ($=0$), it is a fundamental question to ask whether or not the joint system has a solution. For homogeneous quadratic systems ($a=b=0,~a_0=b_0=0$), starting from Finsler's lemma in 1936 until Yuan's alternative lemma in 1990, all combinations of the unsolvability for $\\{x\\in \\mathbb{R} ^n\\mid x^T Ax \\mathbin{\\star } 0\\}\\cap \\{x\\in \\mathbb{R} ^n\\mid x^T Bx \\mathbin{\\#} 0\\}\\subset \\{0\\}$, where $\\star $ and $\\#$ can be any of $\\{\u003c,\\leq ,=\\}$, have been shown to possess either a positive definite or a positive semi-definite matrix pencil of $A$ and $B.$ Extensions to nonhomogeneous quadratic systems $\\{x\\in \\mathbb{R} ^n\\mid f(x) \\mathbin{\\star } 0\\}\\cap \\{x\\in \\mathbb{R} ^n\\mid g(x) \\mathbin{\\#} 0\\}=\\emptyset $ have been done for several cases already. Two challenging cases remain open: the nonhomogeneous Calabi Theorem which determines when $\\{f(x)=0\\}\\cap \\{g(x)=0\\}=\\emptyset $; and the nonhomogeneous (strict) Finsler lemma to determine whether $\\{f(x)\\leq 0\\}\\cap \\{g(x)=0\\}=\\emptyset .$ The paper provides the answers to both, in theorems and algorithms.", "tags": [], "topic": "Tối ưu bậc hai", "type": "arxiv"}, {"id": "9", "concept": "9", "title": "A new separable property of the joint numerical range of quadratic functions and its applications to the Smallest Enclosing Ball Problem", "date": "2025", "authors": ["Van-Bong Nguyen", "Huu-Quang Nguyen"], "journal": "", "doi": ["10.48550/arxiv.2501.15399"], "arxiv": ["2501.15399"], "oa": ["W4406880514"], "refs": ["W796735666", "W1522995151", "W1990558081", "W2005037112", "W2024318675", "W2027752345", "W2061269184", "W2081315400", "W2118333298", "W2140214428", "W2171409252", "W2895282442", "W2912522929", "W3008356049", "W3103340002", "W3181807236", "W3210839039", "W3217321189", "W4214494916", "W7215670621"], "sources": ["OpenAlex"], "description": "We explore separable property of the joint numerical range $G(\\Bbb R^n)$ of a special class of quadratic functions and apply it to solving the smallest enclosing ball (SEB) problem which asks to find a ball $B(a,r)$ in $\\Bbb R^n$ with smallest radius $r$ such that $B(a,r)$ contains the intersection $\\cap_{i=1}^mB(a_i,r_i)$ of $m$ given balls $B(a_i,r_i).$ We show that $G(\\Bbb R^n)$ is convex if and only if ${\\rm rank}\\{a_1-a, a_2-a, \\ldots, a_m-a\\}\\le n-1.$ Otherwise, ${\\rm rank}\\{a_1-a, a_2-a, \\ldots, a_m-a\\}=n$ and $G(\\Bbb R^n)$ is not convex. In this case we propose a new set $G(\\Bbb R^n)^\\bullet$ which allows to show that if $m=n$ then $G(\\Bbb R^n)^\\bullet$ is convex even $G(\\Bbb R^n)$ is not. Importantly, the separable property of $G(\\Bbb R^n)^\\bullet$ then implies the separable property for $G(\\Bbb R^n).$ As a result, a new progress on solving the SEB problem is obtained.", "tags": [], "topic": "Tập mức · Tính lồi", "type": "arxiv"}, {"id": "3", "concept": "3", "title": "Quadratic optimization problems with non-crossover and non-separable constraint boundaries", "date": "2025", "authors": ["Huu-Quang Nguyen", "Ruey-Lin Sheu"], "journal": "Journal of Global Optimization", "doi": ["10.1007/s10898-025-01497-2"], "arxiv": [], "oa": ["W4413033278"], "refs": ["W1522995151", "W1790240331", "W1941836914", "W1986865581", "W2014431362", "W2061269184", "W2067314231", "W2074859470", "W2077205953", "W2090180723", "W2091850740", "W2093790790", "W2137190019", "W2140214428", "W2239109110", "W2296319761", "W2508575958", "W2525586417", "W2767717493", "W2895282442", "W2963227682", "W2991477998", "W3034208633", "W3204035720", "W3217321189", "W4388616112", "W7215670621"], "sources": ["OpenAlex"], "description": "", "tags": [], "topic": "Tối ưu bậc hai", "type": "journal"}, {"id": "2", "concept": "2", "title": "Separating disconnected quadratic level sets by other quadratic level sets", "date": "2023", "authors": ["Huu-Quang Nguyen", "Ya-Chi Chu", "Ruey-Lin Sheu"], "journal": "Journal of Global Optimization", "doi": ["10.1007/s10898-023-01330-8"], "arxiv": [], "oa": ["W4388616112"], "refs": ["W1522995151", "W1977405678", "W1996215314", "W2014431362", "W2036748716", "W2140214428", "W2296319761", "W2639082558", "W2895282442", "W3103340002", "W3121807756", "W3156676267", "W3217321189", "W4229706427", "W6922482996", "W6941576165", "W7215670621"], "sources": ["OpenAlex"], "description": "", "tags": [], "topic": "Tập mức · Tính lồi", "type": "journal"}, {"id": "1", "concept": "1", "title": "On the convexity for the range set of two quadratic functions", "date": "2022", "authors": ["Huu-Quang Nguyen", "Ya-Chi Chu", "Ruey-Lin Sheu"], "journal": "Journal of Industrial and Management Optimization", "doi": ["10.3934/jimo.2020169"], "arxiv": ["2503.01225"], "oa": ["W3103340002"], "refs": ["W1522995151", "W1984355469", "W2005037112", "W2014431362", "W2061269184", "W2074859470", "W2113059340", "W2140214428", "W2781562362", "W2895282442", "W2955620234", "W3034208633", "W6885071897", "W6922482996", "W7215670621"], "sources": ["OpenAlex", "AIMS"], "description": "Given \\begin{document}$ n\\times n $\\end{document} symmetric matrices \\begin{document}$ A $\\end{document} and \\begin{document}$ B, $\\end{document} Dines in 1941 proved that the joint range set \\begin{document}$ \\{(x^TAx, x^TBx)|\\; x\\in\\mathbb{R}^n\\} $\\end{document} is always convex. Our paper is concerned with non-homogeneous extension of the Dines theorem for the range set \\begin{document}$ \\mathbf{R}(f, g) = \\{\\left(f(x), g(x)\\right)|\\; x \\in \\mathbb{R}^n \\}, $\\end{document} \\begin{document}$ f(x) = x^T A x + 2a^T x + a_0 $\\end{document} and \\begin{document}$ g(x) = x^T B x + 2b^T x + b_0. $\\end{document} We show that \\begin{document}$ \\mathbf{R}(f, g) $\\end{document} is convex if, and only if, any pair of level sets, \\begin{document}$ \\{x\\in\\mathbb{R}^n|f(x) = \\alpha\\} $\\end{document} and \\begin{document}$ \\{x\\in\\mathbb{R}^n|g(x) = \\beta\\} $\\end{document} , do not separate each other. With the novel geometric concept about separation, we provide a polynomial-time procedure to practically check whether a given \\begin{document}$ \\mathbf{R}(f, g) $\\end{document} is convex or not.", "tags": [], "topic": "Tập mức · Tính lồi", "type": "both"}, {"id": "5", "concept": "5", "title": "Arrangement of level sets of quadratic constraints and its relation to nonconvex quadratic optimization problems", "date": "2020", "authors": ["Huu-Quang Nguyen", "Ruey-Lin Sheu"], "journal": "", "doi": ["10.48550/arxiv.2012.10299"], "arxiv": ["2012.10299"], "oa": ["W3113708815"], "refs": ["W1522995151", "W1590002045", "W1790240331", "W1941836914", "W1966032224", "W2014431362", "W2061269184", "W2067314231", "W2074859470", "W2079135578", "W2090180723", "W2091850740", "W2093790790", "W2140214428", "W2508575958", "W2525586417", "W2895282442", "W2997544175"], "sources": ["OpenAlex"], "description": "We study a special class of non-convex quadratic programs subject to two (possibly indefinite) quadratic constraints when the level sets of the constraint functions are {\\it not} arranged {\\it alternatively.} It is shown in the paper that this class of problems admit strong duality following a tight SDP relaxation, without assuming primal or dual Slater conditions. Our results cover Ye and Zhang's development in 2003 and the generalized trust region subproblems (GTRS) as special cases. Through the novel geometric view and some simple examples, we can explain why the problem becomes very hard when the level sets of the constraints are indeed arranged alternatively.", "tags": [], "topic": "Tập mức · Tính lồi", "type": "arxiv"}, {"id": "13", "concept": "13", "title": "Deciding whether two quadratic surfaces actually intersect", "date": "2020", "authors": ["Huu-Quang Nguyen", "Ruey-Lin Sheu", "Yong Xia"], "journal": "", "doi": ["10.48550/arxiv.2012.10318"], "arxiv": ["2012.10318"], "oa": [], "refs": [], "sources": ["arXiv"], "description": "", "tags": [], "sourceUrl": "", "topic": "Tối ưu bậc hai", "type": "arxiv"}, {"id": "10", "concept": "10", "title": "Extension of Eaves Theorem for Determining the Boundedness of Convex Quadratic Programming Problems", "date": "2020", "authors": ["Huu-Quang Nguyen", "Van-Bong Nguyen", "Ruey-Lin Sheu"], "journal": "Taiwanese Journal of Mathematics", "doi": ["10.11650/tjm/200501"], "arxiv": [], "oa": ["W3021666281"], "refs": ["W203192772", "W1972950609", "W1994547505", "W2014495923", "W2024509716", "W2032405265", "W2034711256", "W2048720781", "W2070499730", "W2964171787", "W7020604671"], "sources": ["OpenAlex"], "description": "It is known that the boundedness of a convex quadratic function over a convex quadratic constraint (c-QP) can be determined by algorithms. In 1985, Terlaky transformed the said boundedness problem into an $l_p$ programming problem and then apply linear programming, while Caron and Obuchowska in 1995 proposed another iterative procedure that checks, repeatedly, the existence of the implicit equality constraints. Theoretical characterization about the boundedness of (c-QP), however, does not have a complete result so far, except for Eaves' theorem, first by Eaves and later by Dostál, which answered the boundedness question only partially for a polyhedral-type of constraints. In this paper, Eaves' theorem is generalized to answer, necessarily and sufficiently, when the general (c-QP) with a convex quadratic constraint (not just a polyhedron) can be bounded from below, with a new insight that it can only be unbounded within an affine subspace.", "tags": [], "topic": "Tối ưu bậc hai", "type": "journal"}, {"id": "6", "concept": "6", "title": "On Separation of level sets for a pair of quadratic functions", "date": "2020", "authors": ["Huu-Quang Nguyen", "Ruey-Lin Sheu"], "journal": "", "doi": ["10.48550/arxiv.2012.10308"], "arxiv": ["2012.10308"], "oa": ["W3116408144"], "refs": ["W1522995151", "W1990558081", "W2005037112", "W2010364290", "W2014431362", "W2113432563", "W2140214428", "W2895282442"], "sources": ["OpenAlex", "arXiv"], "description": "In this paper, we study some fundamental geometrical properties related to level sets of pair of quadratic functions $(g,f)$.", "tags": [], "topic": "Tập mức · Tính lồi", "type": "arxiv"}, {"id": "4", "concept": "4", "title": "Solving a new type of quadratic optimization problem having a joint numerical range constraint", "date": "2020", "authors": ["Huu-Quang Nguyen", "Ruey-Lin Sheu", "Yong Xia"], "journal": "", "doi": ["10.48550/arxiv.2012.10327"], "arxiv": ["2012.10327"], "oa": ["W3113456304"], "refs": ["W1494436834", "W1522995151", "W1966032224", "W2014431362", "W2051651621", "W2067314231", "W2072899396", "W2074859470", "W2091850740", "W2093790790", "W2110540077", "W2113059340", "W2140214428", "W2166375258", "W2781562362", "W2955620234", "W2997544175", "W3034208633", "W4249667877", "W4255151293", "W6922482996", "W7215670621"], "sources": ["OpenAlex"], "description": "We propose a new formulation of quadratic optimization problems. The objective function $F(f(x),g(x))$ is given as composition of a quadratic function $F(z)$ with two $n$-variate quadratic functions $z_1=f(x)$ and $z_2=g(x).$ In addition, it incorporates with a set of linear inequality constraints in $z=(z_1,z_2)^T,$ while having an implicit constraint that $z$ belongs to the joint numerical range of $(f,g).$ The formulation is very general in the sense that it covers quadratic programming with a single quadratic constraint of all types, including the inequality-type, the equality-type, and the interval-type. Even more, the composition of \"quadratic with quadratics\" as well as the joint numerical range constraint all together allow us to formulate existing unsolved (or not solved efficiently) problems into the new model. In this paper, we solve the quadratic hypersurfaces intersection problem (QSIC) proposed by P$\\acute{\\rm o}$lik and Terlaky; and the problem (AQP) to minimize the absolute value of a quadratic function over a quadratic constraint proposed by Ye and Zhang. We show that, when $F(z)$ and the joint numerical range constraint are both convex, the optimal value of the convex optimization problem can be obtained by solving an SDP followed from a new development of the $\\mathcal{S}$-procedure. The optimal solution can be approximated by conducting a bisection method on $[0,2π].$ On the other hand, if the joint numerical range of $f(x)$ and $g(x)$ is non-convex, the respective quadratic matrices of $f(x)$ and $g(x)$ must be linearly dependent. The linear dependence property enables us to solve (QSIC) and (AQP) accordingly by elementary analysis.", "tags": [], "topic": "Tập mức · Tính lồi", "type": "arxiv"}, {"id": "12", "concept": "12", "title": "Solving a Type of the Tikhonov Regularization of the Total Least Squares by a New S-Lemma", "date": "2019", "authors": ["Huu-Quang Nguyen", "Ruey-Lin Sheu", "Yong Xia"], "journal": "", "doi": ["10.1007/978-3-030-21803-4_23"], "arxiv": [], "oa": ["W2953261296"], "refs": ["W1494436834", "W1522995151", "W1966032224", "W1967956032", "W1984355469", "W1993244617", "W2014431362", "W2067314231", "W2093790790", "W2104564613", "W2108927308", "W2113059340", "W2140214428", "W2796404152", "W3034208633", "W4249667877"], "sources": ["OpenAlex"], "description": "", "tags": [], "topic": "Tối ưu bậc hai", "type": "other"}, {"id": "11", "concept": "11", "title": "Geometric properties for level sets of quadratic functions", "date": "2018", "authors": ["Huu-Quang Nguyen", "Ruey-Lin Sheu"], "journal": "Journal of Global Optimization", "doi": ["10.1007/s10898-018-0706-2"], "arxiv": [], "oa": ["W2895282442"], "refs": ["W1522995151", "W1790240331", "W1984355469", "W1993244617", "W2005037112", "W2014431362", "W2027287418", "W2036748716", "W2039992844", "W2083440647", "W2091850740", "W2108927308", "W2113059340", "W2140214428", "W3210839039", "W3217321189"], "sources": ["OpenAlex"], "description": "", "tags": [], "topic": "Tập mức · Tính lồi", "type": "journal"}, {"id": "14", "concept": "14", "title": "The supporting hyperplane and an alternative to solutions of variational inequalities", "date": "2015", "authors": ["Huu-Quang Nguyen", "Hong-Kun Xu"], "journal": "Journal of Nonlinear and Convex Analysis", "doi": [], "arxiv": [], "oa": [], "refs": [], "sources": ["Danh mục công bố của tác giả"], "description": "", "tags": [], "sourceUrl": "https://www.researchgate.net/profile/Nguyen-Huu-Quang", "topic": "Bất đẳng thức biến phân", "type": "journal"}]}</script>
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const canvas = $("graph"), ctx = canvas.getContext("2d");
+const snapshot = JSON.parse($("snapshot").textContent);
+const typeColors = {"Tập mức · Tính lồi":"#75edcf","Tối ưu bậc hai":"#ffc087","Bất đẳng thức biến phân":"#c2b1ff"};
+const legend = document.createElement("div");
+legend.className = "legend";
+for(const [topic,color] of Object.entries(typeColors)){
+  const label=document.createElement("span");label.textContent="● "+topic;label.style.color=color;legend.append(label);
+}
+document.querySelector(".stage").append(legend);
+const stop = new Set("của và là các một những cho trong trên với được từ về khi theo này để như có không một cách làm đó hơn chúng tôi người vào qua tại giữa bằng đến chỉ rất nhiều cũng mình bạn còn sự việc phần bài công nghiên cứu tác giả duymt doi zenodo the and for this that with from into are was were has have can not which how our your their study paper research publication all also".split(" "));
+let records = [], shown = [], edges = [], network = [], points = [], chosen = null, dataLabel = "";
+let yaw=.28, pitch=.16, zoom=1, extent=1, drag;
+function fold(s) { return String(s ?? "").toLowerCase().normalize("NFD").replace(/\p{M}/gu,"").replaceAll("đ","d"); }
+function setRecords(items,label) {
+  records=items;
+  dataLabel=label;
+  chosen=null;
+  network=buildNetwork(records);
+  filter();
+}
+const stopFold = new Set([...stop].map(fold));
+function vector(p) {
+  const scores = new Map();
+  for (const [text,weight] of [[p.title,4],[p.tags.join(" "),3],[p.description,.52]]) {
+    const counts = new Map();
+    for (const word of fold(text).match(/[\p{L}\p{N}]+/gu) ?? []) {
+      if (word.length < 2 || stopFold.has(word) || /^\d+$/.test(word)) continue;
+      counts.set(word, (counts.get(word) ?? 0)+1);
+    }
+    for (const [word,count] of counts) scores.set(word,(scores.get(word) ?? 0)+weight*(1+Math.log(count)));
+  }
+  return scores;
+}
+function pair(a,b) { return a.concept < b.concept ? a.concept+"|"+b.concept : b.concept+"|"+a.concept; }
+function buildNetwork(items) {
+  const byOA = new Map(items.flatMap(p=>p.oa.map(id=>[id,p])));
+  const linked = new Map();
+  for (const a of items) for (const citation of a.refs) {
+    const b=byOA.get(citation);
+    if (!b || a===b) continue;
+    const key=pair(a,b), edge=linked.get(key) ?? {a,b,kind:"official",relations:new Set(),arrows:new Set()};
+    edge.relations.add(a.title+" → "+b.title);
+    edge.arrows.add(a);
+    linked.set(key,edge);
+  }
+  const shared=[];
+  const authorKey=name=>fold(name).replace(/[^a-z0-9]/g,"");
+  const coauthors=items.map(p=>new Map(p.authors.filter(n=>! ["huuquangnguyen","nguyenhuuquang"].includes(authorKey(n))).map(n=>[authorKey(n),n])));
+  for(let i=0;i<items.length;i++) for(let j=i+1;j<items.length;j++){
+    const names=[...coauthors[i]].filter(([key])=>key && coauthors[j].has(key)).map(([,name])=>name);
+    if(names.length) shared.push({a:items[i],b:items[j],kind:"coauthor",terms:names});
+  }
+  const vectors = items.map(vector), df = new Map();
+  for (const v of vectors) for (const word of v.keys()) df.set(word,(df.get(word) ?? 0)+1);
+  const norms = vectors.map(v => {
+    let squared = 0;
+    for (const [word,weight] of v) {
+      const w=weight*(1+Math.log((items.length+1)/(df.get(word)+1)));
+      v.set(word,w); squared+=w*w;
+    }
+    return Math.sqrt(squared);
+  });
+  const candidates = items.map(()=>[]);
+  for (let i=0;i<items.length;i++) for(let j=i+1;j<items.length;j++) {
+    const a=items[i], b=items[j], key=pair(a,b);
+    if (linked.has(key) || !norms[i] || !norms[j]) continue;
+    const common=[];
+    let dot=0;
+    for (const [word,w] of vectors[i]) {
+      const strength=w*(vectors[j].get(word) ?? 0);
+      if (strength) { dot+=strength; common.push([word,strength]); }
+    }
+    const score=dot/(norms[i]*norms[j]);
+    if (score<.14 || common.length<2) continue;
+    const terms=common.sort((x,y)=>y[1]-x[1]).slice(0,5).map(x=>x[0]);
+    const edge={a,b,score,terms,kind:"similar"};
+    candidates[i].push(edge);candidates[j].push(edge);
+  }
+  const similar=new Map();
+  for (const c of candidates) for (const e of c.sort((a,b)=>b.score-a.score).slice(0,3)) similar.set(pair(e.a,e.b),e);
+  return [...linked.values(),...similar.values(),...shared];
+}
+function filter() {
+  const scope=$("scope").value, mode=$("mode").value, venue=$("venue").value;
+  const words=fold($("find").value).trim().split(/\s+/).filter(Boolean);
+  shown=records.filter(p=>{
+    if(scope!=="all" && p.topic!==scope) return false;
+    if(venue==="both" && p.type!=="both") return false;
+    if(venue==="arxiv" && !p.arxiv.length) return false;
+    if(venue==="journal" && !p.journal) return false;
+    const corpus=fold([p.title,p.journal,p.topic,...p.doi,...p.tags,...p.arxiv,...p.authors].join(" "));
+    return words.every(word=>corpus.includes(word));
+  });
+  const visible=new Set(shown);
+  edges=network.filter(e=>visible.has(e.a)&&visible.has(e.b)&&(mode==="both" ? e.kind!=="coauthor" : e.kind===mode));
+  if(!visible.has(chosen)) chosen=null;
+  const official=edges.filter(e=>e.kind==="official").length;
+  const related=edges.filter(e=>e.kind==="similar").length;
+  const edgeLabel=mode==="coauthor" ? (edges.length+" liên kết đồng tác giả") :
+    (official+" cặp có trích dẫn · "+related+" cặp gần chủ đề");
+  $("count").textContent=shown.length+"/"+records.length+" công trình · "+edgeLabel;
+  $("message").textContent=dataLabel;
+  $("export").disabled=!shown.length;
+  layout();
+  details();
+  draw();
+}
+function layout() {
+  const n=shown.length;
+  shown.forEach((p,i)=>{
+    const z=1-2*(i+.5)/n, angle=i*2.399963, ring=Math.sqrt(1-z*z);
+    p.pos=[Math.cos(angle)*ring,z,Math.sin(angle)*ring].map(v=>v*90);
+    p.force=[0,0,0];
+  });
+  for(let step=0;step<Math.min(105,Math.max(28,19000/(n||1)));step++){
+    for(const p of shown) for(let k=0;k<3;k++) p.force[k]=-.023*p.pos[k];
+    for(let i=0;i<n;i++) for(let j=i+1;j<n;j++){
+      const a=shown[i],b=shown[j],x=a.pos[0]-b.pos[0],y=a.pos[1]-b.pos[1],z=a.pos[2]-b.pos[2];
+      const f=1900/(x*x+y*y+z*z+1)**1.5;
+      a.force[0]+=x*f; a.force[1]+=y*f; a.force[2]+=z*f;
+      b.force[0]-=x*f; b.force[1]-=y*f; b.force[2]-=z*f;
+    }
+    for(const {a,b,kind} of edges){
+      const delta=b.pos.map((v,k)=>v-a.pos[k]), norm=Math.hypot(...delta)+.1;
+      const f=(kind==="official" ? .07 : .035)*(norm-32)/norm;
+      delta.forEach((v,k)=>{a.force[k]+=v*f;b.force[k]-=v*f});
+    }
+    for(const p of shown) for(let k=0;k<3;k++) p.pos[k]+=Math.max(-8,Math.min(8,p.force[k]))*(1-step/135);
+  }
+  extent=Math.max(24,...shown.map(p=>Math.hypot(...p.pos)));
+}
+function draw() {
+  const w=canvas.clientWidth,h=canvas.clientHeight,dpr=devicePixelRatio||1;
+  if(canvas.width!==Math.round(w*dpr)||canvas.height!==Math.round(h*dpr)){
+    canvas.width=Math.round(w*dpr);canvas.height=Math.round(h*dpr);
+  }
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.clearRect(0,0,w,h);
+  const sy=Math.sin(yaw),cy=Math.cos(yaw),sp=Math.sin(pitch),cp=Math.cos(pitch);
+  const scale=Math.min(w,h)*.36/extent*zoom;
+  points=shown.map(p=>{
+    const [x,y,z]=p.pos,depth=z*cy-x*sy,d=y*sp+depth*cp, f=1/(1-d/(3*extent));
+    return {p,x:w/2+(x*cy+z*sy)*scale*f,y:h/2+(y*cp-depth*sp)*scale*f,z:d,r:5.5*f};
+  }).sort((a,b)=>a.z-b.z);
+  const lookup=new Map(points.map(p=>[p.p,p]));
+  const neighbors=new Set([chosen]);
+  for(const e of edges){
+    const a=lookup.get(e.a),b=lookup.get(e.b),selected=e.a===chosen||e.b===chosen;
+    if(selected){neighbors.add(e.a);neighbors.add(e.b)}
+    ctx.globalAlpha=selected?1:(chosen ? .13 : .44);
+    ctx.strokeStyle=ctx.fillStyle=e.kind==="official"?"#75edcf":e.kind==="coauthor"?"#c2b1ff":"#ffcc8f";
+    ctx.lineWidth=selected?2:1;
+    ctx.setLineDash(e.kind==="official"?[]:[4,5]);
+    ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();
+    if(e.arrows){
+      for(const source of e.arrows){
+        const [from,to]=source===e.a?[a,b]:[b,a];
+        const length=Math.hypot(to.x-from.x,to.y-from.y);
+        if(length<from.r+to.r+8) continue;
+        const ux=(to.x-from.x)/length,uy=(to.y-from.y)/length;
+        const x=to.x-ux*(to.r+1),y=to.y-uy*(to.r+1);
+        ctx.beginPath();ctx.moveTo(x,y);
+        ctx.lineTo(x-7*ux-3*uy,y-7*uy+3*ux);
+        ctx.lineTo(x-7*ux+3*uy,y-7*uy-3*ux);ctx.fill();
+      }
+    }
+  }
+  ctx.setLineDash([]);ctx.lineWidth=1.5;
+  for(const p of points){
+    ctx.globalAlpha=!chosen||neighbors.has(p.p)?1:.22;
+    ctx.fillStyle=typeColors[p.p.topic]??"#a6bbd2";
+    ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);ctx.fill();
+    if(p.p===chosen){ctx.strokeStyle="#fff";ctx.stroke()}
+  }
+  ctx.globalAlpha=1;
+}
+function kind(p){return p.journal || (p.arxiv.length ? "arXiv" : "Công bố khác");}
+function button(text,p){
+  const b=document.createElement("button");b.textContent=text;b.dataset.id=p.id;
+  b.setAttribute("aria-pressed",String(p===chosen));
+  b.onclick=()=>selectPaper(p);
+  return b;
+}
+function selectPaper(p){
+  const keyboard=document.activeElement?.dataset?.id;
+  chosen=p;details();draw();
+  if(keyboard) $("papers").querySelector('[data-id="'+keyboard+'"]')?.focus({preventScroll:true});
+}
+function details(){
+  const box=$("details");box.replaceChildren();
+  if(chosen){
+    const title=document.createElement("strong");title.textContent=chosen.title;
+    const meta=document.createElement("p");meta.textContent=[kind(chosen),chosen.date,chosen.topic,chosen.authors.join(", "),chosen.sources.join(" + ")].filter(Boolean).join(" · ");
+    const links=document.createElement("p");
+    function link(label,url){
+      const a=document.createElement("a");a.href=url;a.target="_blank";a.rel="noopener";
+      a.textContent=label;links.append(a,"  ");
+    }
+    for(const id of chosen.arxiv) link("arXiv:"+id,"https://arxiv.org/abs/"+id);
+    for(const id of chosen.doi.filter(d=>!d.startsWith("10.48550/"))) link("DOI "+id,"https://doi.org/"+id);
+    for(const id of chosen.oa) link("OpenAlex "+id,"https://openalex.org/"+id);
+    if(chosen.sourceUrl) link(chosen.id.startsWith("added-") ? "Mở bài báo" : "Danh mục công bố",chosen.sourceUrl);
+    const neighbors=document.createElement("div");neighbors.id="neighbors";
+    for(const e of edges.filter(e=>e.a===chosen||e.b===chosen)){
+      const p=e.a===chosen?e.b:e.a;
+      const note=e.kind==="official" ? (e.arrows.size===2 ? "Hai bài trích dẫn nhau" : e.arrows.has(chosen) ? "Bài đang chọn trích dẫn" : "Trích dẫn bài đang chọn") : e.kind==="coauthor" ? ("Đồng tác giả chung: "+e.terms.join(", ")) :`Gần chủ đề · cosine ${e.score.toFixed(2)} · ${e.terms.join(", ")}`;
+      neighbors.append(button(note+" — "+p.title,p));
+    }
+    box.append(title,meta,links,neighbors);
+  } else {
+    box.textContent=shown.length?"Chọn một nút hoặc một công trình trong danh sách.":"Không có công trình khớp bộ lọc.";
+  }
+  $("papers").replaceChildren(...shown.map(p=>button((p.date.slice(0,4)||"—")+" · "+p.title,p)));
+}
+function exportJson(){
+  const results=shown.map(p=>{
+    const identifier=p.doi.find(d=>!d.toLowerCase().startsWith("10.48550/arxiv.")) ?? p.doi[0];
+    return {title:p.title,doi:identifier ? "https://doi.org/"+identifier : null};
+  });
+  const url=URL.createObjectURL(new Blob([JSON.stringify(results,null,2)+"\n"],{type:"application/json;charset=utf-8"}));
+  const a=document.createElement("a");
+  a.href=url;a.download="nguyen-huu-quang-doi.json";a.click();
+  setTimeout(()=>URL.revokeObjectURL(url),2000);
+}
+canvas.onpointerdown=e=>{
+  if(!e.isPrimary||e.button!==0)return;
+  drag={id:e.pointerId,x:e.clientX,y:e.clientY,yaw,pitch,moved:false};
+  canvas.setPointerCapture(e.pointerId);
+};
+canvas.onpointermove=e=>{
+  if(drag?.id!==e.pointerId)return;
+  const dx=e.clientX-drag.x,dy=e.clientY-drag.y;
+  drag.moved ||= Math.hypot(dx,dy)>4;
+  if(drag.moved){yaw=drag.yaw+dx*.01;pitch=drag.pitch+dy*.01;draw()}
+};
+canvas.onpointerup=e=>{
+  if(drag?.id!==e.pointerId)return;
+  if(!drag.moved){
+    const rect=canvas.getBoundingClientRect(),x=e.clientX-rect.left,y=e.clientY-rect.top;
+    selectPaper(points.findLast(p=>Math.hypot(p.x-x,p.y-y)<p.r+4)?.p??null);
+  }
+  drag=null;
+};
+canvas.onpointercancel=()=>drag=null;
+canvas.addEventListener("wheel",e=>{e.preventDefault();zoom=Math.max(.25,Math.min(5,zoom*Math.exp(-e.deltaY*.001)));draw()},{passive:false});
+$("find").oninput=filter;$("scope").onchange=filter;$("mode").onchange=filter;
+$("venue").onchange=filter;$("export").onclick=exportJson;
+$("reset").onclick=()=>{yaw=.28;pitch=.16;zoom=1;draw()};
+new ResizeObserver(draw).observe(canvas);
+const storageKey = "nguyen-huu-quang-3d-added-v1";
+let additions = [];
+try {
+  const saved = JSON.parse(localStorage.getItem(storageKey) ?? "[]");
+  if (Array.isArray(saved)) additions = saved;
+} catch {}
+
+function updateRecords(){
+  setRecords([...snapshot.records,...additions],"Danh mục · "+snapshot.date+
+    (additions.length ? " · "+additions.length+" công trình đã bổ sung" : ""));
+}
+
+function paperInput(value){
+  let url = null;
+  const text = value.trim().replace(/^doi:\s*/i,"");
+  if (/^https?:\/\//i.test(text)) {
+    url = new URL(text);
+    if (url.username || url.password) throw Error("Đường dẫn bài báo không hợp lệ.");
+  }
+  const path = url ? decodeURIComponent(url.pathname) : text;
+  let doi = path.match(/(?:^|\/)(10\.\d{4,9}\/[^\s]+)$/i)?.[1];
+  if (!doi && url) {
+    const queryDOI = url.searchParams.get("doi") ?? "";
+    doi = queryDOI.match(/^(10\.\d{4,9}\/[^\s]+)$/i)?.[1];
+  }
+  if (url && /^(?:www\.)?arxiv\.org$/i.test(url.hostname)) {
+    const id = path.match(/^\/(?:abs|pdf|html)\/((?:[a-z.-]+\/\d{7}|\d{4}\.\d{4,5}))(?:v\d+)?(?:\.pdf)?\/?$/i)?.[1];
+    if (id) doi = "10.48550/arxiv."+id;
+  }
+  if (!url && !doi) throw Error("Hãy nhập URL bắt đầu bằng https:// hoặc mã DOI.");
+  return {doi:doi?.toLowerCase() ?? "", url:url?.href ?? ""};
+}
+
+function workMetadata(data){
+  const primary = data.primary_location ?? {};
+  const locations = [primary,...(data.locations ?? [])];
+  const doi = [...new Set([data.doi,...locations.map(l=>l.doi)]
+    .filter(d=>typeof d==="string" && /^https?:\/\/doi\.org\/10\./i.test(d))
+    .map(d=>d.replace(/^https?:\/\/doi\.org\//i,"").toLowerCase()))];
+  const arxiv = [...new Set(doi.filter(d=>d.startsWith("10.48550/arxiv.")).map(d=>d.slice(15)))];
+  const journal = locations.find(l=>l.source?.type==="journal")?.source.display_name ?? "";
+  const authors = (data.authorships ?? []).map(a=>a.author?.display_name).filter(Boolean);
+  const belongs = (data.authorships ?? []).some(a=>a.author?.id==="https://openalex.org/A5088312249" ||
+    ["huuquangnguyen","nguyenhuuquang"].includes(fold(a.author?.display_name).replace(/[^a-z]/g,"")));
+  return {title:data.display_name, date:String(data.publication_year ?? ""), doi, arxiv, journal, authors, belongs,
+    oa:[data.id].filter(Boolean).map(x=>x.split("/").pop()),
+    refs:(data.referenced_works ?? []).map(x=>x.split("/").pop())};
+}
+
+async function addPaper(event){
+  event.preventDefault();
+  const status = $("add-status");
+  $("add-button").disabled = true;
+  try {
+    const input = paperInput($("paper-url").value);
+    const manual = $("paper-title").value.trim();
+    let metadata = null;
+    if (input.doi) {
+      status.textContent = "Đang tra cứu DOI…";
+      try {
+        const response = await fetch("https://api.openalex.org/works/doi:"+encodeURIComponent(input.doi),
+          {signal:AbortSignal.timeout(10000)});
+        if (response.ok) {
+          const data = await response.json();
+          if (data.display_name) metadata = workMetadata(data);
+        }
+      } catch {}
+    }
+    if (metadata && !metadata.belongs && !manual) {
+      throw Error("OpenAlex chưa xác nhận tên Nguyễn Hữu Quang trong danh sách tác giả. Kiểm tra bài gốc và nhập nhan đề để bổ sung thủ công.");
+    }
+    if (!metadata && !manual) throw Error("Chưa lấy được nhan đề. Hãy nhập nhan đề của bài để lưu cùng đường dẫn.");
+    const verified = metadata?.belongs ? metadata : null;
+    const doi = [...new Set([...(verified?.doi ?? []),input.doi].filter(Boolean))];
+    const arxiv = [...new Set([...(verified?.arxiv ?? []),...doi.filter(d=>d.startsWith("10.48550/arxiv.")).map(d=>d.slice(15))])];
+    const title = manual || verified.title;
+    const journal = verified?.journal ?? "";
+    const duplicate = records.some(p=>doi.some(d=>p.doi.some(existing=>existing.toLowerCase()===d)) ||
+      verified?.oa.some(id=>p.oa.includes(id)) || (input.url && p.sourceUrl===input.url) ||
+      fold(p.title).replace(/[^\p{L}\p{N}]/gu,"")===fold(title).replace(/[^\p{L}\p{N}]/gu,""));
+    if (duplicate) throw Error("Công trình này đã có trên bản đồ.");
+    const topic = /level sets?|joint numerical range|range set|tap muc|tinh loi/.test(fold(title)) ? "Tập mức · Tính lồi" :
+      /quadratic|tikhonov|bac hai/.test(fold(title)) ? "Tối ưu bậc hai" :
+      /variational inequalit|bien phan/.test(fold(title)) ? "Bất đẳng thức biến phân" : "Chủ đề khác";
+    const id = "added-"+crypto.randomUUID();
+    additions.push({id,concept:id,title,doi,arxiv,journal,topic,date:verified?.date ?? "",
+      type:journal && arxiv.length ? "both" : journal ? "journal" : arxiv.length ? "arxiv" : "other",
+      authors:verified?.authors ?? [],oa:verified?.oa ?? [],refs:verified?.refs ?? [],tags:[],description:"",
+      sources:[verified ? "OpenAlex" : "Bổ sung thủ công"],sourceUrl:input.url});
+    let saved = true;
+    try { localStorage.setItem(storageKey,JSON.stringify(additions)); } catch { saved = false; }
+    updateRecords();
+    event.target.reset();
+    const visible = shown.some(p=>p.id===id);
+    status.textContent = "Đã thêm “"+title+"”."+(saved ? "" : " Trình duyệt chặn lưu. Bài chỉ có trong phiên này.")+
+      (visible ? "" : " Bài đang nằm ngoài bộ lọc hiện tại.");
+  } catch(error) {
+    status.textContent = error.message;
+  } finally {
+    $("add-button").disabled = false;
+  }
+}
+$("add-paper").onsubmit = addPaper;
+
+updateRecords();
+</script>
+</body></html>
